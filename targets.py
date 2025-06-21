@@ -1,6 +1,9 @@
 import ipaddress
 import socket
 from typing import List, Set
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 
 def parse_targets(target_spec: str, visited_files=None) -> List[str]:
     """Convert target specification into individual IP addresses"""
@@ -9,8 +12,7 @@ def parse_targets(target_spec: str, visited_files=None) -> List[str]:
 
     # Handle file input
     if target_spec.startswith('@'):
-        file_path = target_spec[1:]
-        return _read_targets_from_file(file_path, visited_files)
+        return _read_targets_from_file(target_spec, visited_files)
 
     # Handle comma-separated lists
     if ',' in target_spec:
@@ -21,11 +23,17 @@ def parse_targets(target_spec: str, visited_files=None) -> List[str]:
         return targets
 
     # Handle IP ranges
-    if '-' in target_spec:
+    if '-' in target_spec and 'xn--' not in target_spec: #escape IDN domains
         return _expand_ip_range(target_spec)
 
-    # Handle CIDR notation
-    if '/' in target_spec:
+    # Handle CIDR notation with edge case of
+    # IP being hosting a directory in form of
+    # a subnet like http://10.2.3.4/25 (200 OK)
+    if '/' in target_spec :
+        try:
+            urlopen(Request("http://" + target_spec), timeout = 0.5)
+        except:
+            return _resolve_hostname(target_spec)
         return _expand_cidr(target_spec)
 
     # Handle single IPs and hostnames
@@ -43,9 +51,18 @@ def _is_ip(target: str) -> bool:
         return False
 
 def _resolve_hostname(hostname: str) -> List[str]:
-    """Resolve hostname to IP addresses (IPv4 and IPv6)"""
+    #"""Resolve hostname to IP addresses (IPv4 and IPv6)"""
     try:
-        addrinfo = socket.getaddrinfo(hostname, None)
+        #""" URL to hostname"""
+        try:
+            parsed_url = urlparse(hostname)
+            if parsed_url.scheme!="": #scheme presence
+                hostname = parsed_url.netloc
+            else:
+                hostname = hostname.split("/")[0] # example.com/favicon.ico
+        except Exception as error:
+            print(error)
+        addrinfo = socket.getaddrinfo(hostname.split(":")[0], None) #port escape : example.com:8080/about
         # Use set to deduplicate addresses
         return list({addr[4][0] for addr in addrinfo})
     except socket.gaierror:
@@ -59,7 +76,7 @@ def _expand_ip_range(range_spec: str) -> List[str]:
     # Handle IPv6 ranges
     if ':' in range_spec:
         return _expand_ipv6_range(range_spec)
-    
+
     # Handle IPv4 ranges
     return _expand_ipv4_range(range_spec)
 
@@ -157,14 +174,14 @@ def _read_targets_from_file(file_path: str, visited_files: Set[str]) -> List[str
     """Read targets from file, one per line, and parse each line"""
     try:
         # Prevent circular references
+        file_path = file_path.split("@")[1]
         if file_path in visited_files:
             return []
         visited_files.add(file_path)
-
         targets = []
         with open(file_path, 'r') as file:
             for line in file:
-                line = line.strip()
+                line = line.replace(" ","").strip()
                 if line and not line.startswith('#'):  # Skip empty lines and comments
                     targets.extend(parse_targets(line, visited_files))
         return targets
@@ -176,7 +193,7 @@ def _read_targets_from_file(file_path: str, visited_files: Set[str]) -> List[str
         return []
 
 
-#if __name__ == "__main__":
+if __name__ == "__main__":
     # Test cases
     ##### IPv4 tests [successful]
     #print(parse_targets("192.168.1.1"))  # Single IP
@@ -203,4 +220,6 @@ def _read_targets_from_file(file_path: str, visited_files: Set[str]) -> List[str
     #print(parse_targets("::1-3"))
     #print(parse_targets("2001:db8::0-3"))
     ###### File test [successful]
-    #print(parse_targets("@tests/hosts"))
+    print(parse_targets("@tests/hosts"))
+    #print(parse_targets("@tests/protected"))
+    #print(parse_targets("@tests/not/found"))

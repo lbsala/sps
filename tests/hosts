@@ -1,5 +1,10 @@
+example.com#mustfail
 example.com
-127.0.0.1
 localhost
+127.0.0.1
 #::1 testing out comments
 2001:DB8:aBcD::1-3
+# infinite cycle test
+@tests/hosts
+# test other file
+@tests/other_hosts

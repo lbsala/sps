@@ -1,0 +1,9 @@
+#subdomain test of example.com
+www.example.com
+#redirection test to example.com + spacing test
+tcp://    me file . sbs /favicon. i  c o
+# protocol omitting test + path omitting test + port omitting test
+https://example.com:8080/favicon.ico?param=1&param2=#testing
+# punycode IDN2008 test
+https://josefßon.rocks/
+xn--josefon-4va.rocks
